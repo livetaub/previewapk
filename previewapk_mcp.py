@@ -131,15 +131,15 @@ TOOLS = [
          "path": {"type": "string", "description": "local path to the .apk file"},
          "device": {"type": "string"}}}},
     {"name": "previewapk_start",
-     "description": "Start a preview session for the device's attached app. driver='agent': you drive and screenshot; the human watches. driver='user': the human drives in the portal; your input is refused. Returns the permanent preview link to share with the human.",
+     "description": "Start a preview session for the device's attached app. driver='agent': you drive and screenshot; the human watches. driver='user': the human drives in the portal; your input is refused. Returns links info — share the session_url from previewapk_get_links with the human.",
      "inputSchema": {"type": "object", "required": ["device"], "properties": {
          "driver": {"type": "string", "enum": ["agent", "user"], "default": "agent"},
          "device": {"type": "string"}}}},
     {"name": "previewapk_stop",
-     "description": "Stop the session. The session link dies; the permanent preview link goes dormant until the next start or the next time a human opens it.",
+     "description": "Stop the session. The session link dies with it.",
      "inputSchema": {"type": "object", "properties": {"device": {"type": "string"}}}},
     {"name": "previewapk_get_links",
-     "description": "The device's permanent preview link (always on, boots the device when opened, view-only) and, if a session is live, the session link.",
+     "description": "The share link for the live session (view-only; minted at start, dies when the session ends), plus driver state — including driver_note, which tells you if the user took the wheel.",
      "inputSchema": {"type": "object", "properties": {"device": {"type": "string"}}}},
     {"name": "previewapk_tap",
      "description": "Tap the screen. Coordinates are 0..1 fractions of the screen (resolution-independent). Requires an agent-driven session.",
@@ -215,7 +215,7 @@ def call_tool(name, args):
         r = act(did, "run", {"driver": args.get("driver", "agent")})
         links = act(did, "links")
         return text_result({**r, "links": links,
-                            "note": "The session takes seconds to boot. Poll previewapk_status until status is 'live', then screenshot. Share the preview_url with the human."})
+                            "note": "The session takes seconds to boot. Poll previewapk_status until status is 'live', then screenshot. Share the session_url from previewapk_get_links with the human."})
     if name == "previewapk_stop":
         return text_result(act(did, "stop"))
     if name == "previewapk_get_links":
