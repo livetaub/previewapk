@@ -11,9 +11,9 @@ Setup:
 Commands:
   previewapk push app.apk [--run] [--driver agent|user] [--device dev1]
   previewapk start [--driver agent|user]     start the device's attached app
-  previewapk stop                             stop the device (links go dormant)
+  previewapk stop                             stop the device (the session link dies)
   previewapk status                           device + session state
-  previewapk links                            preview link + live session link
+  previewapk links                            the share link for the live session
   previewapk tap X Y                          X,Y are 0..1 screen fractions
   previewapk swipe X1 Y1 X2 Y2 [MS]
   previewapk key CODE                         Android keycode (4=Back, 3=Home)
@@ -272,7 +272,7 @@ def main():
             r = dev_action(dev_id, "run", {"driver": a.driver})
             links = dev_action(dev_id, "links")
             human += (f"\nSession starting (driver: {a.driver})."
-                      f"\nPreview link (always on): {links.get('preview_url')}")
+                      f"\nShare link: run `previewapk links` once it's live.")
             res = {**res, "run": r, "links": links}
         out(res, human)
         return
@@ -307,21 +307,20 @@ def main():
         r = dev_action(did, "run", {"driver": a.driver})
         links = dev_action(did, "links")
         out({**r, "links": links},
-            f"Session starting on {d['name']} (driver: {a.driver}).\nPreview link: {links.get('preview_url')}")
+            f"Session starting on {d['name']} (driver: {a.driver}).\nShare link: run `previewapk links` once it's live.")
     elif a.cmd == "stop":
         r = dev_action(did, "stop")
-        out(r, f"{d['name']} stopped. The preview link is dormant until the next start.")
+        out(r, f"{d['name']} stopped. The session link died with the session.")
     elif a.cmd == "status":
         human = (f"{d['name']} ({did}) — {d['status']}"
                  + (f", driven by {d.get('driver')}" if d["status"] == "live" else "")
                  + (f", app: {d['apk']['label']} v{d['apk'].get('version_name')}" if d.get("apk") else ", no app attached")
-                 + f"\nPreview link: {d.get('preview_url')}"
                  + (f"\nSession link: {d.get('view_url')}" if d.get("view_url") else ""))
         out(d, human)
     elif a.cmd == "links":
         r = dev_action(did, "links")
-        out(r, f"Preview link (always on): {r.get('preview_url')}\n"
-               f"Session link (dies with the session): {r.get('session_url') or '— device is off'}")
+        out(r, f"Session link (view-only, dies with the session): {r.get('session_url') or '— device is off'}\n"
+               f"Driver: {r.get('driver')}" + (f" — {r.get('driver_note')}" if r.get('driver_note') else ""))
     elif a.cmd == "logs":
         params = {"lines": a.lines, "since": a.since, "q": a.q,
                   "level": "E" if a.errors else a.level}
