@@ -215,7 +215,7 @@ def call_tool(name, args):
         r = act(did, "run", {"driver": args.get("driver", "agent")})
         links = act(did, "links")
         return text_result({**r, "links": links,
-                            "note": "The session takes under a minute to boot. Poll previewapk_status until status is 'live', then screenshot. Share the preview_url with the human."})
+                            "note": "The session takes seconds to boot. Poll previewapk_status until status is 'live', then screenshot. Share the preview_url with the human."})
     if name == "previewapk_stop":
         return text_result(act(did, "stop"))
     if name == "previewapk_get_links":
