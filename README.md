@@ -5,7 +5,7 @@ No emulator on the machine, no device on the desk, and the Play Store is
 not a feedback loop.
 
 **PreviewAPK gives your agent a real cloud Android phone.** Push an APK,
-it boots in the browser in about a minute. The agent drives it — taps,
+it boots in the browser in seconds. The agent drives it — taps,
 types, screenshots, logs — and verifies its own work before you ever look.
 You watch the same phone through a link, take the wheel whenever you want,
 and every device gets one permanent preview link you can hand to a client
