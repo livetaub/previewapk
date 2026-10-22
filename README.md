@@ -8,7 +8,7 @@ not a feedback loop.
 it boots in the browser in seconds. The agent drives it — taps,
 types, screenshots, logs — and verifies its own work before you ever look.
 You watch the same phone through a link, take the wheel whenever you want,
-and every device gets one permanent preview link you can hand to a client
+and every session gets a share link you can hand to a client
 or paste into a PR.
 
 - $19/month per device, unlimited runs. One device runs one app at a
@@ -41,7 +41,7 @@ python3 previewapk.py shot             # a screenshot you can open
 python3 previewapk.py logs --errors    # the app's logcat, noise filtered
 python3 previewapk.py relaunch         # app back in front, ~2s, no reboot
 python3 previewapk.py handoff user     # hand the human the wheel
-python3 previewapk.py links            # your permanent preview link
+python3 previewapk.py links            # the share link for the live session
 ```
 
 Pushing to a **running** device hot-swaps the app in — installed and
