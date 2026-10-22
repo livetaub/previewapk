@@ -1,0 +1,29 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.livetaub/previewapk",
+  "title": "PreviewAPK",
+  "description": "Give your AI agent a real cloud Android phone: push APKs, drive it, get screenshots and logs.",
+  "version": "1.0.0",
+  "websiteUrl": "https://previewapk.siteport.site",
+  "repository": {
+    "url": "https://github.com/livetaub/previewapk",
+    "source": "github"
+  },
+  "packages": [
+    {
+      "registryType": "mcpb",
+      "identifier": "https://github.com/livetaub/previewapk/releases/download/v1.0.0/previewapk.mcpb",
+      "fileSha256": "5e49cab6ea6ad24ffe7edfa4350d6b28504709c9a16b3e3839850e72fb5a2819",
+      "transport": { "type": "stdio" },
+      "environmentVariables": [
+        {
+          "name": "PREVIEWAPK_API_KEY",
+          "description": "Your PreviewAPK API key (starts with pvk_) from your account's Developers card in the portal.",
+          "format": "string",
+          "isRequired": true,
+          "isSecret": true
+        }
+      ]
+    }
+  ]
+}
