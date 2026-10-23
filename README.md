@@ -55,8 +55,22 @@ instead.
 
 ## Quick start — MCP server
 
-Download `previewapk_mcp.py` from this repo, then register it with your
-MCP client. Claude Code:
+**Hosted (zero install):** point your MCP client at the remote server —
+same 27 tools, your API key as a Bearer token, nothing to download or
+keep current. Claude Code:
+
+```sh
+claude mcp add --transport http previewapk https://previewapk.siteport.site/mcp \
+  --header "Authorization: Bearer pvk_…"
+```
+
+The server issues a session id at connect and your working-device
+selection rides on it, exactly like the local server. Hosted
+differences: `previewapk_push_apk` takes `apk_b64` (base64) instead of
+a local `path`; file/record downloads return `data_b64`.
+
+**Local (stdio):** download `previewapk_mcp.py` from this repo, then
+register it with your MCP client. Claude Code:
 
 ```sh
 claude mcp add previewapk \
@@ -78,10 +92,20 @@ Cursor / Claude Desktop / other MCP clients (JSON config):
 }
 ```
 
-17 tools: list/use devices, push (hot-swaps a running device), start,
-stop, links, tap by coordinates or by label, swipe, key, type text,
-relaunch, screenshot (returns a real image, from the framebuffer — it
-agrees with the hierarchy), UI hierarchy, session logs, handoff.
+27 tools: list/use devices, push (hot-swaps a running device), start,
+stop, links, tap by coordinates, by label, or by snapshot ref, swipe,
+key, type text, relaunch, screenshot (returns a real image, from the
+framebuffer — it agrees with the hierarchy), UI hierarchy, observe (a
+compact numbered screen snapshot), act (batched actions), wait_for
+(elements — or the handback, with condition "driver"), request_human
+(ask the human for a step only a human should do: a password, a 2FA
+code, a payment approval — and get back the exact message to relay),
+finish (file the session wrap-up; the counts in its message — duration,
+actions, errors — are composed by the server, and finishing does not
+stop the session unless asked), session logs, handoff, a field-report
+tool, screen recording (start/stop/download an MP4 of the session),
+and device controls (timezone, per-app locale, mock GPS location, file
+push/pull in shared storage, reboot).
 
 The working-device model mirrors the CLI: an agent session selects a
 device once (`previewapk_use_device` or `previewapk_start`), then works
