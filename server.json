@@ -3,7 +3,7 @@
   "name": "io.github.livetaub/previewapk",
   "title": "PreviewAPK",
   "description": "Give your AI agent a real cloud Android phone: push APKs, drive it, get screenshots and logs.",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "websiteUrl": "https://previewapk.siteport.site",
   "repository": {
     "url": "https://github.com/livetaub/previewapk",
@@ -12,8 +12,8 @@
   "packages": [
     {
       "registryType": "mcpb",
-      "identifier": "https://github.com/livetaub/previewapk/releases/download/v1.0.2/previewapk.mcpb",
-      "fileSha256": "56924ca2a319548999f8a1f3401350464260cb982586ddee717771fc621d57c1",
+      "identifier": "https://github.com/livetaub/previewapk/releases/download/v1.0.3/previewapk.mcpb",
+      "fileSha256": "43bdd682aafe8ea00c29afd45f51b0e7f40ebf71f689775b46a09e8f283df39d",
       "transport": {
         "type": "stdio"
       },
