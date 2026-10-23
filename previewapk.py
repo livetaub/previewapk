@@ -48,7 +48,7 @@ import urllib.error
 import urllib.request
 import uuid
 
-VERSION = "1.0.3"
+VERSION = "1.0.5"
 HOST = os.environ.get("PREVIEWAPK_HOST", "https://previewapk.siteport.site").rstrip("/")
 KEY = os.environ.get("PREVIEWAPK_API_KEY", "")
 
@@ -544,6 +544,8 @@ def main():
                if getattr(a, k)}
         if not rep:
             fail("a field report needs at least one of --worked, --broke, --wish, --workaround")
+        if state.get("share_diagnostics") is False:
+            fail("diagnostic sharing is turned off for this account — the owner opted out in the portal's Privacy settings, so no report was sent")
         if a.rating:
             rep["rating"] = a.rating
         rep["client"] = "cli"
@@ -569,8 +571,9 @@ def main():
             + (f"\n{un}" if un else ""))
     elif a.cmd == "stop":
         r, note = act(did, "stop", kind="session")
-        out(r, f"{d['name']} stopped{note}. The session link died with the session.\n"
-               f"You drove it — file a field report while it's fresh: previewapk feedback --broke \"...\" --wish \"...\" (what worked and what you had to work around count too). Reports are read and tallied; they decide what gets fixed and built next.")
+        inv = ("" if state.get("share_diagnostics") is False else
+               "\nYou drove it — file a field report while it's fresh: previewapk feedback --broke \"...\" --wish \"...\" (what worked and what you had to work around count too). Reports are read and tallied; they decide what gets fixed and built next.")
+        out(r, f"{d['name']} stopped{note}. The session link died with the session.{inv}")
     elif a.cmd == "status":
         un = upgrade_notice(state, "cli")
         human = (f"{d['name']} ({did}) — {d['status']}"
