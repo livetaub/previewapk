@@ -22,6 +22,7 @@ Commands:
   previewapk shot [out.png] [--scale 0.5]     save a screenshot (resumable download; --scale shrinks it for weak networks)
   previewapk relaunch                         bring the app back to the foreground (no reboot)
   previewapk handoff user|agent               pass the wheel mid-session
+  previewapk feedback --broke "..." --wish "..."   file a field report: what broke, what worked, what you wish it had — read and tallied by the team
 
 Reliability: if a connection drops mid-action, the CLI checks the
 device before reporting — an action is only called failed when the
@@ -430,6 +431,9 @@ def main():
     p = sub.add_parser("text", parents=[common], help="type text into the focused field"); p.add_argument("text")
     p = sub.add_parser("shot", parents=[common], help="save a screenshot (download resumes if the connection is cut)"); p.add_argument("out", nargs="?", default="previewapk-shot.png"); p.add_argument("--scale", type=float, default=1.0, help="0.5 = half-size frame, ~4x smaller transfer for weak networks")
     p = sub.add_parser("handoff", parents=[common], help="pass the wheel to the other driver mid-session"); p.add_argument("driver", choices=["agent", "user"])
+    p = sub.add_parser("feedback", parents=[common], help="file a field report: what broke, what worked, what you wish the tool had")
+    p.add_argument("--worked"); p.add_argument("--broke"); p.add_argument("--wish")
+    p.add_argument("--workaround"); p.add_argument("--rating", type=int, choices=[1, 2, 3, 4, 5])
     a = ap.parse_args()
     a.json = getattr(a, "json", False)
     a.device = getattr(a, "device", None) or load_selection() or os.environ.get("PREVIEWAPK_DEVICE", "")
@@ -516,6 +520,20 @@ def main():
             rows.append(f"{dv.get('name', dv['id'])} ({dv['id']}) — {dv.get('profile')}, Android {dv.get('android')} — {dv['status']} — {app}{mark}")
         out(state.get("devices", []), "\n".join(rows) or "No devices on this account.")
         return
+    if a.cmd == "feedback":
+        rep = {k: getattr(a, k) for k in ("worked", "broke", "wish", "workaround")
+               if getattr(a, k)}
+        if not rep:
+            fail("a field report needs at least one of --worked, --broke, --wish, --workaround")
+        if a.rating:
+            rep["rating"] = a.rating
+        rep["client"] = "cli"
+        sel = load_selection()
+        if sel:
+            rep["device"] = sel
+        r = req("POST", "/portal/api/feedback", rep)
+        out(r, r.get("message", "Field report filed."))
+        return
     d = pick_device(state, a.device)
     did = d["id"]
 
@@ -527,7 +545,8 @@ def main():
             f"Session starting on {d['name']} (driver: {a.driver}){note}.\nShare link: run `previewapk links` once it's live.")
     elif a.cmd == "stop":
         r, note = act(did, "stop", kind="session")
-        out(r, f"{d['name']} stopped{note}. The session link died with the session.")
+        out(r, f"{d['name']} stopped{note}. The session link died with the session.\n"
+               f"You drove it — file a field report while it's fresh: previewapk feedback --broke \"...\" --wish \"...\" (what worked and what you had to work around count too). Reports are read and tallied; they decide what gets fixed and built next.")
     elif a.cmd == "status":
         human = (f"{d['name']} ({did}) — {d['status']}"
                  + (f", driven by {d.get('driver')}" if d["status"] == "live" else "")
