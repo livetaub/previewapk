@@ -48,6 +48,7 @@ import urllib.error
 import urllib.request
 import uuid
 
+VERSION = "1.0.3"
 HOST = os.environ.get("PREVIEWAPK_HOST", "https://previewapk.siteport.site").rstrip("/")
 KEY = os.environ.get("PREVIEWAPK_API_KEY", "")
 
@@ -158,6 +159,24 @@ def save_selection(d):
 
 def get_state(raise_transport=False):
     return req("GET", "/portal/api/state", raise_transport=raise_transport)
+
+
+def _ver(s):
+    try:
+        return tuple(int(x) for x in str(s).split("."))
+    except Exception:
+        return ()
+
+
+def upgrade_notice(state, kind):
+    """One plain line when the server knows a newer client than this
+    one. Silent when the server doesn't say (old server, no field)."""
+    info = ((state or {}).get("clients") or {}).get(kind) or {}
+    latest = info.get("version")
+    if latest and _ver(latest) > _ver(VERSION):
+        return (f"previewapk {kind} {latest} is available (you're running {VERSION}): "
+                f"curl -o {info.get('file', 'previewapk.py')} {info.get('url', '')}")
+    return ""
 
 
 def pick_device(state, want):
@@ -528,6 +547,7 @@ def main():
         if a.rating:
             rep["rating"] = a.rating
         rep["client"] = "cli"
+        rep["client_version"] = VERSION
         sel = load_selection()
         if sel:
             rep["device"] = sel
@@ -541,18 +561,24 @@ def main():
         save_selection(d)
         r, note = act(did, "run", {"driver": a.driver}, kind="session")
         links = links_of(did)
+        un = upgrade_notice(state, "cli")
+        if un:
+            r["client_notice"] = un
         out({**r, "links": links},
-            f"Session starting on {d['name']} (driver: {a.driver}){note}.\nShare link: run `previewapk links` once it's live.")
+            f"Session starting on {d['name']} (driver: {a.driver}){note}.\nShare link: run `previewapk links` once it's live."
+            + (f"\n{un}" if un else ""))
     elif a.cmd == "stop":
         r, note = act(did, "stop", kind="session")
         out(r, f"{d['name']} stopped{note}. The session link died with the session.\n"
                f"You drove it — file a field report while it's fresh: previewapk feedback --broke \"...\" --wish \"...\" (what worked and what you had to work around count too). Reports are read and tallied; they decide what gets fixed and built next.")
     elif a.cmd == "status":
+        un = upgrade_notice(state, "cli")
         human = (f"{d['name']} ({did}) — {d['status']}"
                  + (f", driven by {d.get('driver')}" if d["status"] == "live" else "")
                  + (f", app: {d['apk']['label']} v{d['apk'].get('version_name')}" if d.get("apk") else ", no app attached")
-                 + (f"\nSession link: {d.get('view_url')}" if d.get("view_url") else ""))
-        out(d, human)
+                 + (f"\nSession link: {d.get('view_url')}" if d.get("view_url") else "")
+                 + (f"\n{un}" if un else ""))
+        out({**d, "client_notice": un} if un else d, human)
     elif a.cmd == "links":
         r = req("POST", f"/portal/api/device/{did}/links", {})
         out(r, f"Session link (view-only, dies with the session): {r.get('session_url') or '— device is off'}\n"
