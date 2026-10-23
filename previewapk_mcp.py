@@ -35,6 +35,7 @@ import time
 import urllib.request
 import uuid
 
+VERSION = "1.0.3"
 HOST = os.environ.get("PREVIEWAPK_HOST", "https://previewapk.siteport.site").rstrip("/")
 KEY = os.environ.get("PREVIEWAPK_API_KEY", "")
 DEFAULT_DEVICE = os.environ.get("PREVIEWAPK_DEVICE", "")
@@ -248,6 +249,24 @@ def upload_apk(path, device):
         raise TransportError(str(e))
 
 
+def _ver(s):
+    try:
+        return tuple(int(x) for x in str(s).split("."))
+    except Exception:
+        return ()
+
+
+def upgrade_notice(state):
+    """One plain line when the server knows a newer MCP client than
+    this one. Silent when the server doesn't say."""
+    info = ((state or {}).get("clients") or {}).get("mcp") or {}
+    latest = info.get("version")
+    if latest and _ver(latest) > _ver(VERSION):
+        return (f"previewapk mcp {latest} is available (you're running {VERSION}): "
+                f"curl -o {info.get('file', 'previewapk_mcp.py')} {info.get('url', '')}")
+    return ""
+
+
 def text_result(obj):
     return {"content": [{"type": "text", "text": json.dumps(obj, indent=1)}]}
 
@@ -355,19 +374,23 @@ def call_tool(name, args):
     d, _state = pick_device(want)
     did = d["id"]
     if name == "previewapk_status":
-        return text_result(d)
+        un = upgrade_notice(_state)
+        return text_result({**d, "client_notice": un} if un else d)
     if name == "previewapk_start":
         SELECTED["id"] = did
         r = act(did, "run", {"driver": args.get("driver", "agent")})
         links = act(did, "links")
-        return text_result({**r, "links": links,
-                            "note": "The session takes seconds to boot. Poll previewapk_status until status is 'live', then screenshot. Share the session_url from previewapk_get_links with the human."})
+        un = upgrade_notice(_state)
+        return text_result({**r, "links": links, **({"client_notice": un} if un else {}),
+                            "note": "The session takes seconds to boot. Poll previewapk_status until status is 'live', then screenshot. Share the session_url from previewapk_get_links with the human."
+                            + (f" Also: {un}" if un else "")})
     if name == "previewapk_feedback":
         rep = {k: args[k] for k in ("worked", "broke", "wish", "workaround", "rating")
                if args.get(k)}
         if not rep:
             raise RuntimeError("a field report needs at least one of: worked, broke, wish, workaround")
         rep["client"] = "mcp"
+        rep["client_version"] = VERSION
         rep["device"] = did
         return text_result(api("POST", "/portal/api/feedback", rep))
     if name == "previewapk_stop":
@@ -487,7 +510,7 @@ def handle(msg):
         return {"jsonrpc": "2.0", "id": mid, "result": {
             "protocolVersion": "2024-11-05",
             "capabilities": {"tools": {}},
-            "serverInfo": {"name": "previewapk", "version": "1.0.0"}}}
+            "serverInfo": {"name": "previewapk", "version": VERSION}}}
     if method == "ping":
         return {"jsonrpc": "2.0", "id": mid, "result": {}}
     if method == "tools/list":
