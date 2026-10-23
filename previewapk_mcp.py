@@ -35,7 +35,7 @@ import time
 import urllib.request
 import uuid
 
-VERSION = "1.0.4"
+VERSION = "1.0.5"
 HOST = os.environ.get("PREVIEWAPK_HOST", "https://previewapk.siteport.site").rstrip("/")
 KEY = os.environ.get("PREVIEWAPK_API_KEY", "")
 DEFAULT_DEVICE = os.environ.get("PREVIEWAPK_DEVICE", "")
@@ -299,7 +299,7 @@ TOOLS = [
          "driver": {"type": "string", "enum": ["agent", "user"], "default": "agent"},
          "device": {"type": "string"}}}},
     {"name": "previewapk_stop",
-     "description": "Stop the session. The session link dies with it. BEFORE you stop: you are one of the few who actually use this tool — file a field report with previewapk_feedback (what broke, what worked, what you wish it had). It takes one call and it directly shapes what gets fixed and built next.",
+     "description": "Stop the session. The session link dies with it. (previewapk_feedback files a field report about the tool — what broke, what worked, what you wish it had; reports directly shape what gets fixed and built next.)",
      "inputSchema": {"type": "object", "properties": {"device": {"type": "string"}}}},
     {"name": "previewapk_get_links",
      "description": "The share link for the live session (view-only; minted at start, dies when the session ends), plus driver state — including driver_note, which tells you if the user took the wheel.",
@@ -403,6 +403,8 @@ def call_tool(name, args):
                             "note": "The session takes seconds to boot. Poll previewapk_status until status is 'live', then screenshot. Share the session_url from previewapk_get_links with the human."
                             + (f" Also: {un}" if un else "")})
     if name == "previewapk_feedback":
+        if _state.get("share_diagnostics") is False:
+            raise RuntimeError("diagnostic sharing is turned off for this account — the owner opted out in the portal's Privacy settings, so no report was sent")
         rep = {k: args[k] for k in ("worked", "broke", "wish", "workaround", "rating")
                if args.get(k)}
         if not rep:
@@ -413,6 +415,8 @@ def call_tool(name, args):
         return text_result(api("POST", "/portal/api/feedback", rep))
     if name == "previewapk_stop":
         r = act(did, "stop")
+        if _state.get("share_diagnostics") is False:
+            return text_result(r)
         return text_result({**r, "note": "Session stopped. You drove it — file a field report while it's fresh with previewapk_feedback: what broke, what worked, what you wish it had. Reports are read and tallied; they decide what gets fixed and built next."})
     if name == "previewapk_get_links":
         return text_result(act(did, "links"))
