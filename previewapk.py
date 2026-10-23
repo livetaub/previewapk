@@ -62,7 +62,7 @@ import urllib.error
 import urllib.request
 import uuid
 
-VERSION = "1.1.0"
+VERSION = "1.1.1"
 HOST = os.environ.get("PREVIEWAPK_HOST", "https://previewapk.siteport.site").rstrip("/")
 
 CRED_FILE = os.path.expanduser("~/.previewapk/credentials.json")

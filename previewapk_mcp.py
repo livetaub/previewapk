@@ -45,7 +45,7 @@ import time
 import urllib.request
 import uuid
 
-VERSION = "1.1.0"
+VERSION = "1.1.1"
 HOST = os.environ.get("PREVIEWAPK_HOST", "https://previewapk.siteport.site").rstrip("/")
 KEY = os.environ.get("PREVIEWAPK_API_KEY", "")
 if not KEY:
