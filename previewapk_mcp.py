@@ -25,10 +25,13 @@ portal while your input is refused. previewapk_handoff switches sides
 mid-session without rebooting.
 """
 import base64
+import hashlib
+import http.client
 import json
 import os
 import sys
 import urllib.error
+import time
 import urllib.request
 import uuid
 
@@ -37,9 +40,12 @@ KEY = os.environ.get("PREVIEWAPK_API_KEY", "")
 DEFAULT_DEVICE = os.environ.get("PREVIEWAPK_DEVICE", "")
 
 
-def api(method, path, payload=None, timeout=60, raw=False):
-    if not KEY:
-        raise RuntimeError("PREVIEWAPK_API_KEY is not set")
+class TransportError(Exception):
+    """The request or its response died in transit; the server may or
+    may not have acted. Verify state — never assume either way."""
+
+
+def _api_once(method, path, payload, timeout, raw):
     data = None
     headers = {"X-Api-Key": KEY}
     if payload is not None:
@@ -56,7 +62,25 @@ def api(method, path, payload=None, timeout=60, raw=False):
         except Exception:
             err = f"HTTP {e.code}"
         raise RuntimeError(err)
+    except Exception as e:
+        raise TransportError(str(e))
     return body if raw else json.loads(body or b"{}")
+
+
+def api(method, path, payload=None, timeout=60, raw=False, raise_transport=False):
+    if not KEY:
+        raise RuntimeError("PREVIEWAPK_API_KEY is not set")
+    attempts = 4 if method == "GET" else 1
+    for i in range(attempts):
+        try:
+            return _api_once(method, path, payload, timeout, raw)
+        except TransportError as e:
+            if i + 1 < attempts:
+                time.sleep(min(0.7 * (2 ** i), 2.5))
+                continue
+            if raise_transport:
+                raise
+            raise RuntimeError(f"request failed: {e}")
 
 
 SELECTED = {"id": ""}  # this agent session's working device
@@ -81,6 +105,118 @@ def pick_device(want):
 
 def act(device, action, payload=None):
     return api("POST", f"/portal/api/device/{device}/{action}", payload or {})
+
+
+def screen_digest(device):
+    try:
+        r = api("GET", f"/portal/api/device/{device}/hierarchy",
+                timeout=30, raise_transport=True)
+    except TransportError:
+        return None
+    tree = r.get("tree")
+    if not tree:
+        return None
+    h = hashlib.sha256()
+
+    def walk(n):
+        h.update(((n.get("class") or "") + "|" + (n.get("text") or "") + "|"
+                  + (n.get("desc") or "") + "|" + str(n.get("bounds")) + ";").encode())
+        for c in n.get("children", []):
+            walk(c)
+    walk(tree)
+    return h.hexdigest()
+
+
+def act_input(device, payload):
+    """An input action with a receipt. Returns the server result, or a
+    dict saying the connection died and what the state check found —
+    {"landed": true} when the screen changed, {"landed": null} when it
+    could not be settled. Never a bare connection error."""
+    before = screen_digest(device)
+    try:
+        return act(device, "input", payload)
+    except TransportError:
+        pass
+    time.sleep(0.9)
+    after = screen_digest(device)
+    if before is not None and after is not None:
+        if after != before:
+            return {"ok": True, "landed": True,
+                    "note": "the connection dropped mid-call, but the screen changed — the input landed"}
+        try:
+            return act(device, "input", payload)
+        except TransportError:
+            pass
+    return {"ok": False, "landed": None,
+            "note": "the connection dropped mid-call and the state check could not settle whether the input landed — check previewapk_hierarchy before repeating it"}
+
+
+def fetch_screenshot(device, scale=1.0):
+    """Resumable screenshot download (Range + the portal's frame
+    cache): a cut transfer picks up at the byte it reached."""
+    path = f"/portal/api/device/{device}/screenshot"
+    if scale and scale != 1.0:
+        path += f"?scale={scale}"
+    buf = bytearray()
+    total = None
+    cap = None
+    for _ in range(24):
+        headers = {"X-Api-Key": KEY}
+        if buf:
+            headers["Range"] = f"bytes={len(buf)}-"
+        r = urllib.request.Request(HOST + path, headers=headers)
+        status, hdrs, chunk = 0, {}, b""
+        try:
+            with urllib.request.urlopen(r, timeout=90) as resp:
+                status, hdrs = resp.status, resp.headers
+                try:
+                    chunk = resp.read()
+                except http.client.IncompleteRead as e:
+                    chunk = e.partial or b""
+        except urllib.error.HTTPError as e:
+            if e.code in (503, 416):
+                buf, total, cap = bytearray(), None, None
+                time.sleep(1.5)
+                continue
+            raise RuntimeError(f"HTTP {e.code}: screenshot failed")
+        except Exception:
+            time.sleep(0.5)
+            continue
+        if status == 200 and buf:
+            buf, total, cap = bytearray(), None, None
+        if status in (200, 206):
+            this_cap = hdrs.get("X-Captured-At")
+            if cap is not None and this_cap and this_cap != cap:
+                buf, total, cap = bytearray(), None, None
+                continue
+            cap = cap or this_cap
+            cr = hdrs.get("Content-Range") or ""
+            if "/" in cr:
+                try:
+                    total = int(cr.rsplit("/", 1)[1])
+                except Exception:
+                    pass
+            if total is None and status == 200:
+                try:
+                    total = int(hdrs.get("Content-Length") or 0) or None
+                except Exception:
+                    pass
+            if chunk:
+                if status == 206 and cr:
+                    try:
+                        start = int(cr.split(" ", 1)[1].split("-", 1)[0])
+                    except Exception:
+                        start = len(buf)
+                    if start != len(buf):
+                        continue
+                buf.extend(chunk)
+        if total is not None and len(buf) >= total:
+            break
+        time.sleep(0.3)
+    data = bytes(buf)
+    if not data.startswith(b"\x89PNG") or b"IEND" not in data[-12:]:
+        raise RuntimeError("screenshot transfer could not be completed — the network kept cutting it")
+    return data
 
 
 def upload_apk(path, device):
@@ -108,6 +244,8 @@ def upload_apk(path, device):
         except Exception:
             err = "upload failed"
         raise RuntimeError(err)
+    except Exception as e:
+        raise TransportError(str(e))
 
 
 def text_result(obj):
@@ -136,7 +274,7 @@ TOOLS = [
          "driver": {"type": "string", "enum": ["agent", "user"], "default": "agent"},
          "device": {"type": "string"}}}},
     {"name": "previewapk_stop",
-     "description": "Stop the session. The session link dies with it.",
+     "description": "Stop the session. The session link dies with it. BEFORE you stop: you are one of the few who actually use this tool — file a field report with previewapk_feedback (what broke, what worked, what you wish it had). It takes one call and it directly shapes what gets fixed and built next.",
      "inputSchema": {"type": "object", "properties": {"device": {"type": "string"}}}},
     {"name": "previewapk_get_links",
      "description": "The share link for the live session (view-only; minted at start, dies when the session ends), plus driver state — including driver_note, which tells you if the user took the wheel.",
@@ -163,8 +301,8 @@ TOOLS = [
      "description": "Bring the session's app back to the foreground — after Back exits to the launcher, or the app crashed or was closed. Takes about 2 seconds; no reboot.",
      "inputSchema": {"type": "object", "properties": {"device": {"type": "string"}}}},
     {"name": "previewapk_screenshot",
-     "description": "Capture the device's current screen as an image you can see (the real framebuffer — it agrees with the hierarchy). Use it to verify your changes look right.",
-     "inputSchema": {"type": "object", "properties": {"device": {"type": "string"}}}},
+     "description": "Capture the device's current screen as an image you can see (the real framebuffer — it agrees with the hierarchy). Use it to verify your changes look right. The download resumes automatically if the connection is cut; pass scale=0.5 on weak networks for a quarter-size transfer.",
+     "inputSchema": {"type": "object", "properties": {"device": {"type": "string"}, "scale": {"type": "number", "description": "0.5 = half-size frame (smaller transfer)"}}}},
     {"name": "previewapk_handoff",
      "description": "Pass the wheel mid-session: to='user' lets the human drive in the portal (e.g. after you've verified a feature); to='agent' gives control back to you.",
      "inputSchema": {"type": "object", "required": ["to"], "properties": {
@@ -176,6 +314,14 @@ TOOLS = [
          "lines": {"type": "integer", "default": 100},
          "errors_only": {"type": "boolean", "default": False},
          "contains": {"type": "string", "description": "only lines containing this text"},
+         "device": {"type": "string"}}}},
+    {"name": "previewapk_feedback",
+     "description": "File a field report about THIS tool — you are one of the few who actually use it, and your report is read and tallied by the team that builds it. Say what broke or behaved unexpectedly (broke), what worked well (worked), what feature you wished it had for your task (wish), and anything you had to work around (workaround). One call, any subset of fields. File it before you stop the session, while the details are fresh — the wishes of working agents are the roadmap.",
+     "inputSchema": {"type": "object", "properties": {
+         "worked": {"type": "string"}, "broke": {"type": "string"},
+         "wish": {"type": "string"}, "workaround": {"type": "string"},
+         "rating": {"type": "integer", "minimum": 1, "maximum": 5,
+                    "description": "overall reliability this session, 1-5"},
          "device": {"type": "string"}}}},
     {"name": "previewapk_hierarchy",
      "description": "Get the current screen as a UI element tree (class, text, content-desc, resource id, bounds, center coordinates, state flags) instead of pixels. Much faster and cheaper than a screenshot for navigation and assertions: find elements, read values, check state. Use previewapk_screenshot for visual checks (layout, overlap, images).",
@@ -216,24 +362,33 @@ def call_tool(name, args):
         links = act(did, "links")
         return text_result({**r, "links": links,
                             "note": "The session takes seconds to boot. Poll previewapk_status until status is 'live', then screenshot. Share the session_url from previewapk_get_links with the human."})
+    if name == "previewapk_feedback":
+        rep = {k: args[k] for k in ("worked", "broke", "wish", "workaround", "rating")
+               if args.get(k)}
+        if not rep:
+            raise RuntimeError("a field report needs at least one of: worked, broke, wish, workaround")
+        rep["client"] = "mcp"
+        rep["device"] = did
+        return text_result(api("POST", "/portal/api/feedback", rep))
     if name == "previewapk_stop":
-        return text_result(act(did, "stop"))
+        r = act(did, "stop")
+        return text_result({**r, "note": "Session stopped. You drove it — file a field report while it's fresh with previewapk_feedback: what broke, what worked, what you wish it had. Reports are read and tallied; they decide what gets fixed and built next."})
     if name == "previewapk_get_links":
         return text_result(act(did, "links"))
     if name == "previewapk_tap":
-        return text_result(act(did, "input", {"action": "tap", "x": args["x"], "y": args["y"]}))
+        return text_result(act_input(did, {"action": "tap", "x": args["x"], "y": args["y"]}))
     if name == "previewapk_swipe":
-        return text_result(act(did, "input", {"action": "swipe", "x1": args["x1"], "y1": args["y1"],
+        return text_result(act_input(did, {"action": "swipe", "x1": args["x1"], "y1": args["y1"],
                                               "x2": args["x2"], "y2": args["y2"],
                                               "dur": args.get("duration_ms", 300)}))
     if name == "previewapk_press_key":
-        return text_result(act(did, "input", {"action": "key", "key": args["keycode"]}))
+        return text_result(act_input(did, {"action": "key", "key": args["keycode"]}))
     if name == "previewapk_type_text":
-        return text_result(act(did, "input", {"action": "text", "text": args["text"]}))
+        return text_result(act_input(did, {"action": "text", "text": args["text"]}))
     if name == "previewapk_relaunch":
-        return text_result(act(did, "input", {"action": "launch"}))
+        return text_result(act_input(did, {"action": "launch"}))
     if name == "previewapk_screenshot":
-        raw = api("GET", f"/portal/api/device/{did}/screenshot", timeout=90, raw=True)
+        raw = fetch_screenshot(did, args.get("scale", 1.0))
         return {"content": [{"type": "image", "data": base64.b64encode(raw).decode(),
                              "mimeType": "image/png"}]}
     if name == "previewapk_get_logs":
@@ -317,7 +472,7 @@ def call_tool(name, args):
         n = ms[idx]
         if "center" not in n:
             raise RuntimeError("matched element has no bounds to tap")
-        res = act(did, "input", {"action": "tap", "x": n["center"][0], "y": n["center"][1]})
+        res = act_input(did, {"action": "tap", "x": n["center"][0], "y": n["center"][1]})
         return text_result({**res, "tapped": {"text": n.get("text"), "class": n.get("class"),
                                              "center": n["center"], "matches": len(ms)}})
     if name == "previewapk_handoff":
