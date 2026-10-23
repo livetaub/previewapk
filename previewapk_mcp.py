@@ -35,7 +35,7 @@ import time
 import urllib.request
 import uuid
 
-VERSION = "1.0.3"
+VERSION = "1.0.4"
 HOST = os.environ.get("PREVIEWAPK_HOST", "https://previewapk.siteport.site").rstrip("/")
 KEY = os.environ.get("PREVIEWAPK_API_KEY", "")
 DEFAULT_DEVICE = os.environ.get("PREVIEWAPK_DEVICE", "")
@@ -81,14 +81,20 @@ def api(method, path, payload=None, timeout=60, raw=False, raise_transport=False
                 continue
             if raise_transport:
                 raise
-            raise RuntimeError(f"request failed: {e}")
+            raise RuntimeError(f"the connection to PreviewAPK dropped mid-request ({e}) — "
+                               "if this was an action, check the device state before retrying it")
 
 
 SELECTED = {"id": ""}  # this agent session's working device
 
 
 def pick_device(want):
-    state = api("GET", "/portal/api/state")
+    try:
+        state = api("GET", "/portal/api/state", raise_transport=True)
+    except TransportError:
+        raise RuntimeError("the connection to PreviewAPK dropped while checking device state — "
+                           "the network cut it repeatedly and nothing was attempted. "
+                           "Wait a moment and retry.")
     devs = state.get("devices", [])
     if not devs:
         raise RuntimeError("no devices on this account")
@@ -135,7 +141,7 @@ def act_input(device, payload):
     could not be settled. Never a bare connection error."""
     before = screen_digest(device)
     try:
-        return act(device, "input", payload)
+        return api("POST", f"/portal/api/device/{device}/input", payload, raise_transport=True)
     except TransportError:
         pass
     time.sleep(0.9)
@@ -145,7 +151,7 @@ def act_input(device, payload):
             return {"ok": True, "landed": True,
                     "note": "the connection dropped mid-call, but the screen changed — the input landed"}
         try:
-            return act(device, "input", payload)
+            return api("POST", f"/portal/api/device/{device}/input", payload, raise_transport=True)
         except TransportError:
             pass
     return {"ok": False, "landed": None,
@@ -357,7 +363,19 @@ def call_tool(name, args):
     want = args.get("device", "")
     if name == "previewapk_push_apk":
         d0, _s0 = pick_device(want)
-        res = upload_apk(args["path"], d0["id"])
+        try:
+            res = upload_apk(args["path"], d0["id"])
+        except TransportError:
+            try:
+                st = api("GET", "/portal/api/state", raise_transport=True)
+                dv = next((x for x in st.get("devices", []) if x["id"] == d0["id"]), {})
+                app = (dv.get("apk") or {}).get("label")
+                return text_result({"ok": False, "landed": None,
+                                    "attached_app": app, "device_status": dv.get("status"),
+                                    "note": "the connection dropped during the upload and it could not be settled whether the APK arrived — the state check above shows what is attached now; re-push if it is not your build"})
+            except TransportError:
+                return text_result({"ok": False, "landed": None,
+                                    "note": "the connection dropped during the upload and the follow-up state check was cut too — check previewapk_status before re-pushing"})
         return text_result(res)
     if name == "previewapk_list_devices":
         state = api("GET", "/portal/api/state")
