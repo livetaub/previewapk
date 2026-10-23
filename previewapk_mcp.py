@@ -66,10 +66,7 @@ class TransportError(Exception):
 
 class Client:
     """One PreviewAPK API client context: host + key + the working-
-    device selection for one agent session. The stdio server runs a
-    single default Client (env/credentials-file key); the hosted MCP
-    server builds one Client per hosted session, so concurrent
-    sessions never share mutable state."""
+    device selection for one agent session."""
 
     def __init__(self, host=None, key=None, default_device=None,
                  selected_box=None):
@@ -837,7 +834,7 @@ TOOLS = [
      "description": "Bring the session's app back to the foreground — after Back exits to the launcher, or the app crashed or was closed. Takes about 2 seconds; no reboot.",
      "inputSchema": {"type": "object", "properties": {"device": {"type": "string"}}}},
     {"name": "previewapk_screenshot",
-     "description": "Capture the device's current screen as an image you can see (the real framebuffer — it agrees with the hierarchy). Use it to verify your changes look right. The download resumes automatically if the connection is cut; pass scale=0.5 on weak networks for a quarter-size transfer.",
+     "description": "Capture the device's current screen as an image you can see (the real screen — it agrees with the hierarchy). Use it to verify your changes look right. The download resumes automatically if the connection is cut; pass scale=0.5 on weak networks for a quarter-size transfer.",
      "inputSchema": {"type": "object", "properties": {"device": {"type": "string"}, "scale": {"type": "number", "description": "0.5 = half-size frame (smaller transfer)"}}}},
     {"name": "previewapk_handoff",
      "description": "Pass the wheel mid-session: to='user' lets the human drive in the portal (e.g. after you've verified a feature); to='agent' gives control back to you.",
@@ -913,7 +910,7 @@ TOOLS = [
          "end_session": {"type": "boolean", "default": False, "description": "also stop the session after filing (default false)"},
          "device": {"type": "string"}}}},
     {"name": "previewapk_device",
-     "description": "Device controls for realistic QA. action='set_timezone' (IANA tz, e.g. America/New_York) — verified on the device. action='set_locale' (BCP 47 tag, e.g. de-DE; package optional, defaults to the session app) — per-app language, Android 13+ style; relaunch the app if it doesn't switch live. action='set_location' (lat, lon) — GPS reports a mock fix until cleared. action='clear_location'. action='push_file' (local_path on this machine, remote_path under /sdcard, max 10 MB) — test fixtures, seed files. action='pull_file' (remote_path, local_path, max 10 MB). action='list_files' (remote_path folder, default Download). action='delete_file' (remote_path). action='reboot' — restarts the phone (same phone, same data: app, files and settings survive; ~a minute; a running recording is saved first). There is NO clipboard control: this Android build has no shell clipboard implementation (tested).",
+     "description": "Device controls for realistic QA. action='set_timezone' (IANA tz, e.g. America/New_York) — verified on the device. action='set_locale' (BCP 47 tag, e.g. de-DE; package optional, defaults to the session app) — per-app language, Android 13+ style; relaunch the app if it doesn't switch live. action='set_location' (lat, lon) — GPS reports a mock fix until cleared. action='clear_location'. action='push_file' (local_path on this machine, remote_path under /sdcard, max 10 MB) — test fixtures, seed files. action='pull_file' (remote_path, local_path, max 10 MB). action='list_files' (remote_path folder, default Download). action='delete_file' (remote_path). action='reboot' — restarts the phone (same phone, same data: app, files and settings survive; ~a minute; a running recording is saved first). There is NO clipboard control: not available on these phones.",
      "inputSchema": {"type": "object", "required": ["action"], "properties": {
          "action": {"type": "string", "enum": ["set_timezone", "set_locale", "set_location", "clear_location", "push_file", "pull_file", "list_files", "delete_file", "reboot"]},
          "tz": {"type": "string", "description": "IANA timezone (set_timezone)"},

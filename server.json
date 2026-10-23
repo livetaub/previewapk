@@ -28,7 +28,7 @@
     {
       "registryType": "mcpb",
       "identifier": "https://github.com/livetaub/previewapk/releases/download/v1.1.0/previewapk.mcpb",
-      "fileSha256": "1a53111e1d2c82f16e8c03531ffd39c4dabec9fde02f47f65db16a86954fda7b",
+      "fileSha256": "8a48ac8ef25e6f15d7c474421195e51be98e1c2e018dcdf512bd3aeae751d083",
       "transport": {
         "type": "stdio"
       },
